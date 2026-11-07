@@ -1,0 +1,96 @@
+<!--
+  Two-wheel self-balancing robot, converted from the SolidWorks URDF export
+  in cad/bot_balancing_urdf (masses, inertias and meshes taken from it).
+
+  Notes on the conversion:
+  - The exporter gave both wheel joints the same origin and baked the y offset
+    into the right wheel mesh. Here each wheel body sits at its real centre
+    (measured from the STL bounding boxes) and the mesh is shifted back.
+  - Meshes are visual only; collisions use a cylinder per wheel and the convex
+    hull of the base mesh (for when it falls over).
+  - The URDF's left_wheel_link is on -y and right_wheel_link on +y; names kept.
+  Units: SI (m, kg, s).
+-->
+<mujoco model="bot_balancing">
+  <compiler angle="radian" autolimits="true" meshdir="meshes"/>
+  <option timestep="0.002" integrator="implicitfast"/>
+
+  <visual>
+    <global offwidth="1280" offheight="720"/>
+  </visual>
+
+  <default>
+    <geom friction="1.2 0.005 0.0001"/>
+    <default class="visual">
+      <geom type="mesh" contype="0" conaffinity="0" group="2" mass="0"/>
+    </default>
+    <default class="wheel">
+      <!-- radius 0.034 m measured from the wheel STL -->
+      <geom type="cylinder" size="0.034 0.012" zaxis="0 1 0" group="3" rgba="0.2 0.2 0.2 0.3" mass="0"/>
+      <joint type="hinge" axis="0 1 0" damping="0.002" armature="0.0002"/>
+    </default>
+  </default>
+
+  <asset>
+    <mesh name="base_link" file="base_link.STL"/>
+    <mesh name="imu_link" file="imu_link.STL"/>
+    <mesh name="left_wheel_link" file="left_wheel_link.STL"/>
+    <mesh name="right_wheel_link" file="right_wheel_link.STL"/>
+    <texture name="grid" type="2d" builtin="checker" rgb1="0.2 0.3 0.4" rgb2="0.1 0.2 0.3"
+             width="512" height="512" mark="edge" markrgb="0.8 0.8 0.8"/>
+    <material name="grid" texture="grid" texrepeat="8 8" reflectance="0.1"/>
+    <texture name="sky" type="skybox" builtin="gradient" rgb1="0.4 0.6 0.8" rgb2="0 0 0" width="256" height="256"/>
+  </asset>
+
+  <worldbody>
+    <light pos="0 0 3" dir="0 0 -1" directional="true"/>
+    <geom name="floor" type="plane" size="20 20 0.1" material="grid"/>
+
+    <!-- base_link origin is 0.0264 m above the axle; the env re-places it on reset. -->
+    <body name="chassis" pos="0 0 0.0604">
+      <freejoint name="root"/>
+      <inertial pos="-0.029555 0.0010924 0.066402" mass="0.47562"
+                fullinertia="0.00071578 0.00056287 0.00025839 8.5923E-08 -6.0278E-07 -2.1368E-05"/>
+      <geom class="visual" mesh="base_link" rgba="0.9 0.9 0.9 1"/>
+      <geom name="base_collision" type="mesh" mesh="base_link" group="3" mass="0"/>
+
+      <!-- imu_link: fixed, negligible mass -->
+      <geom class="visual" mesh="imu_link" pos="-0.000613606 0.00501981 0.139015" rgba="0.1 0.6 0.1 1"/>
+      <site name="imu" pos="-0.000613606 0.00501981 0.139015" size="0.004"/>
+
+      <body name="left_wheel_link" pos="0.000111151 -0.0575050 -0.0263979">
+        <joint name="left_wheel_joint" class="wheel"/>
+        <inertial pos="-6.1778E-05 -0.0025914 -0.00013691" mass="0.09497"
+                  fullinertia="2.7568E-05 4.9481E-05 2.7722E-05 2.8058E-10 -5.9888E-07 3.3169E-08"/>
+        <geom class="visual" mesh="left_wheel_link" pos="0 -0.00765 0" rgba="0.63 0.63 0.63 1"/>
+        <geom name="wheel_left" class="wheel"/>
+      </body>
+      <body name="right_wheel_link" pos="0.000111151 0.0597950 -0.0263979">
+        <joint name="right_wheel_joint" class="wheel"/>
+        <inertial pos="-0.00013959 0.00259 -0.00011825" mass="0.09497"
+                  fullinertia="2.7563E-05 4.9481E-05 2.7727E-05 -2.8178E-10 5.9886E-07 -3.2608E-08"/>
+        <geom class="visual" mesh="right_wheel_link" pos="0 -0.12495 0" rgba="0.63 0.63 0.63 1"/>
+        <geom name="wheel_right" class="wheel"/>
+      </body>
+    </body>
+  </worldbody>
+
+  <contact>
+    <exclude body1="chassis" body2="left_wheel_link"/>
+    <exclude body1="chassis" body2="right_wheel_link"/>
+  </contact>
+
+  <!-- ctrl in [-1, 1] maps to +/- gear N*m of wheel torque. Set gear to your motor's torque. -->
+  <actuator>
+    <motor name="left"  joint="left_wheel_joint"  gear="0.3" ctrlrange="-1 1"/>
+    <motor name="right" joint="right_wheel_joint" gear="0.3" ctrlrange="-1 1"/>
+  </actuator>
+
+  <sensor>
+    <framequat name="imu_quat" objtype="site" objname="imu"/>
+    <gyro name="imu_gyro" site="imu"/>
+    <accelerometer name="imu_acc" site="imu"/>
+    <jointvel name="wheel_left_vel" joint="left_wheel_joint"/>
+    <jointvel name="wheel_right_vel" joint="right_wheel_joint"/>
+  </sensor>
+</mujoco>

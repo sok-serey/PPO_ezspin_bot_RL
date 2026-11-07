@@ -1,0 +1,56 @@
+# Python bytecode & cache
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# Environments
+.venv/
+venv/
+ENV/
+env/
+env.bak/
+venv.bak/
+
+# Distribution & packaging
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Testing & linting
+.pytest_cache/
+.coverage
+htmlcov/
+.mypy_cache/
+.ruff_cache/
+
+# IDEs & OS files
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+
+# MuJoCo / Simulation logs
+MUJOCO_LOG.TXT
+*.log
+
+# Training outputs (ignore all new runs and zip checkpoints except reference pretrained model)
+runs/*
+!runs/ppo_full/
+runs/ppo_full/*
+!runs/ppo_full/best_model.zip
+!runs/ppo_full/final_model.zip

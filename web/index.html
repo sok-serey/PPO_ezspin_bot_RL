@@ -1,0 +1,171 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Balance Bot Viewer</title>
+<style>
+  :root { --bg: #11161c; --panel: rgba(20, 26, 33, 0.88); --text: #e6edf3; --muted: #8b98a5; --accent: #f0883e; --bad: #f85149; --good: #3fb950; }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text); font: 14px/1.4 system-ui, -apple-system, sans-serif; overflow: hidden; }
+  #view { position: fixed; inset: 0; }
+  #hud { position: fixed; top: 12px; left: 12px; width: min(300px, calc(100vw - 24px)); background: var(--panel); border-radius: 10px; padding: 12px 14px; backdrop-filter: blur(6px); }
+  h1 { font-size: 15px; margin: 0 0 8px; }
+  .row { display: flex; justify-content: space-between; gap: 8px; font-variant-numeric: tabular-nums; }
+  .row span:first-child { color: var(--muted); }
+  .bar { height: 6px; background: #2a333d; border-radius: 3px; margin: 2px 0 6px; position: relative; overflow: hidden; }
+  .bar i { position: absolute; top: 0; bottom: 0; left: 50%; background: var(--accent); }
+  .buttons { display: flex; gap: 8px; margin-top: 10px; flex-wrap: wrap; }
+  button { flex: 1; background: #2a333d; color: var(--text); border: 1px solid #3a4550; border-radius: 6px; padding: 7px 10px; font: inherit; cursor: pointer; }
+  button:hover { border-color: var(--accent); }
+  label { display: flex; align-items: center; gap: 6px; color: var(--muted); margin-top: 8px; }
+  #policy { color: var(--muted); font-size: 12px; word-break: break-all; margin-top: 6px; }
+  #status { position: fixed; bottom: 12px; left: 50%; transform: translateX(-50%); background: var(--panel); padding: 6px 12px; border-radius: 6px; font-weight: 600; display: none; }
+</style>
+</head>
+<body>
+<div id="view"></div>
+<div id="hud">
+  <h1>Balance Bot</h1>
+  <div class="row"><span>Episode</span><span id="ep">–</span></div>
+  <div class="row"><span>Time</span><span id="t">–</span></div>
+  <div class="row"><span>Return</span><span id="ret">–</span></div>
+  <div class="row"><span>Pitch error</span><span id="pitch">–</span></div>
+  <div class="bar"><i id="pitchbar"></i></div>
+  <div class="row"><span>Speed</span><span id="speed">–</span></div>
+  <div class="row"><span>Torque L / R</span><span id="torque">–</span></div>
+  <div class="bar"><i id="tlbar"></i></div>
+  <div class="bar"><i id="trbar"></i></div>
+  <div class="row"><span>Last returns</span><span id="last">–</span></div>
+  <div class="buttons">
+    <button id="push">Push</button>
+    <button id="reset">Reset</button>
+  </div>
+  <label><input type="checkbox" id="follow" checked> Follow robot</label>
+  <div id="policy"></div>
+</div>
+<div id="status"></div>
+
+<script type="importmap">
+{ "imports": {
+  "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+} }
+</script>
+<script type="module">
+import * as THREE from "three";
+import { OrbitControls } from "three/addons/controls/OrbitControls.js";
+import { STLLoader } from "three/addons/loaders/STLLoader.js";
+
+const view = document.getElementById("view");
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setPixelRatio(window.devicePixelRatio);
+renderer.shadowMap.enabled = true;
+view.appendChild(renderer.domElement);
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x11161c);
+scene.fog = new THREE.Fog(0x11161c, 3, 9);
+
+const camera = new THREE.PerspectiveCamera(40, 1, 0.01, 50);
+camera.up.set(0, 0, 1);               // MuJoCo is z-up
+camera.position.set(0.15, -0.75, 0.3);
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.target.set(0, 0, 0.08);
+controls.enableDamping = true;
+
+scene.add(new THREE.HemisphereLight(0xffffff, 0x334455, 1.2));
+const sun = new THREE.DirectionalLight(0xffffff, 1.6);
+sun.position.set(1, -1, 3);
+sun.castShadow = true;
+sun.shadow.mapSize.set(1024, 1024);
+Object.assign(sun.shadow.camera, { left: -1, right: 1, top: 1, bottom: -1 });
+scene.add(sun, sun.target);
+
+const floor = new THREE.Mesh(new THREE.PlaneGeometry(40, 40), new THREE.MeshStandardMaterial({ color: 0x1d2a36, roughness: 0.9 }));
+floor.receiveShadow = true;
+scene.add(floor);
+const grid = new THREE.GridHelper(40, 400, 0x3a5068, 0x2a3a4a);
+grid.rotation.x = Math.PI / 2;
+grid.position.z = 0.0005;
+scene.add(grid);
+
+function resize() {
+  renderer.setSize(window.innerWidth, window.innerHeight);
+  camera.aspect = window.innerWidth / window.innerHeight;
+  camera.updateProjectionMatrix();
+}
+window.addEventListener("resize", resize);
+resize();
+
+// One group per MuJoCo body; meshes sit at their geom offset inside it.
+const bodies = {};
+const config = await (await fetch("/config")).json();
+const loader = new STLLoader();
+for (const g of config.geoms) {
+  if (!bodies[g.body]) { bodies[g.body] = new THREE.Group(); scene.add(bodies[g.body]); }
+  loader.load("/meshes/" + g.file, (geom) => {
+    geom.computeVertexNormals();
+    const [r, gr, b] = g.rgba;
+    const mesh = new THREE.Mesh(geom, new THREE.MeshStandardMaterial({ color: new THREE.Color(r, gr, b), roughness: 0.55, metalness: 0.1 }));
+    mesh.position.set(...g.pos);
+    mesh.castShadow = true;
+    bodies[g.body].add(mesh);
+  });
+}
+
+const $ = (id) => document.getElementById(id);
+const setBar = (el, v) => {   // v in [-1, 1], drawn from the centre
+  const w = Math.min(Math.abs(v), 1) * 50;
+  el.style.width = w + "%";
+  el.style.left = v >= 0 ? "50%" : (50 - w) + "%";
+};
+const status = $("status");
+let lastPos = null;
+
+const es = new EventSource("/stream");
+es.onmessage = (ev) => {
+  const s = JSON.parse(ev.data);
+  if (!s.bodies) return;
+  for (const [name, b] of Object.entries(s.bodies)) {
+    const grp = bodies[name];
+    if (!grp) continue;
+    grp.position.set(...b.pos);
+    const [w, x, y, z] = b.quat;           // MuJoCo quats are w-first
+    grp.quaternion.set(x, y, z, w);
+  }
+  const p = s.bodies.chassis.pos;
+  if ($("follow").checked && lastPos) {
+    const d = new THREE.Vector3(p[0] - lastPos[0], p[1] - lastPos[1], 0);
+    camera.position.add(d);
+    controls.target.add(d);
+  }
+  lastPos = p;
+  sun.position.set(p[0] + 1, p[1] - 1, 3);
+  sun.target.position.set(p[0], p[1], 0);
+
+  $("ep").textContent = s.episode;
+  $("t").textContent = s.t.toFixed(2) + " s";
+  $("ret").textContent = s.return.toFixed(1);
+  $("pitch").textContent = s.pitch_err_deg.toFixed(1) + "°  (balance at " + s.pitch_eq_deg.toFixed(1) + "°)";
+  setBar($("pitchbar"), s.pitch_err_deg / 34);
+  $("speed").textContent = s.speed.toFixed(2) + " m/s";
+  $("torque").textContent = s.torque.map((v) => v.toFixed(2)).join(" / ");
+  setBar($("tlbar"), s.torque[0]);
+  setBar($("trbar"), s.torque[1]);
+  $("last").textContent = s.last_returns.length ? s.last_returns.join(", ") : "–";
+  $("policy").textContent = s.policy ? "policy: " + s.policy : "no trained policy yet (zero torque)";
+
+  if (s.fell) { status.textContent = "Fell over, resetting"; status.style.color = "var(--bad)"; status.style.display = "block"; }
+  else if (s.t < 0.05) status.style.display = "none";
+};
+es.onerror = () => { status.textContent = "Disconnected, retrying"; status.style.color = "var(--bad)"; status.style.display = "block"; };
+es.onopen = () => { status.style.display = "none"; };
+
+$("push").onclick = () => fetch("/push", { method: "POST" });
+$("reset").onclick = () => fetch("/reset", { method: "POST" });
+
+renderer.setAnimationLoop(() => { controls.update(); renderer.render(scene, camera); });
+</script>
+</body>
+</html>

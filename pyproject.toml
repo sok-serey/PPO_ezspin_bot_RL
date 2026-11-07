@@ -1,0 +1,43 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "balance_bot"
+version = "0.1.0"
+description = "Two-wheel self-balancing robot simulation and reinforcement learning in MuJoCo"
+readme = "README.md"
+requires-python = ">=3.9"
+license = { text = "MIT" }
+authors = [
+    { name = "Serey Sok" }
+]
+keywords = ["reinforcement-learning", "ppo", "mujoco", "robotics", "balancing-robot", "esp32"]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "Topic :: Scientific/Engineering :: Physics",
+]
+dependencies = [
+    "mujoco>=3.1",
+    "gymnasium[mujoco]>=1.0",
+    "stable-baselines3>=2.3",
+    "tensorboard",
+    "numpy",
+    "onnx",
+    "onnxruntime",
+]
+
+[project.optional-dependencies]
+dev = [
+    "black",
+    "ruff",
+    "pytest",
+]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["balance_bot*"]
+
+[tool.setuptools.package-data]
+balance_bot = ["assets/*", "assets/meshes/*"]
